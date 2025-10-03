@@ -90,13 +90,15 @@ def check_slots():
         return
 
     first_day = all_available_days[0]
+    # Normalize day parameter to avoid '+' being interpreted as space in query
+    normalized_day = first_day.replace("+00:00", "Z")
 
     # Query both slot endpoints for the chosen day
-    slots_url_main = SLOT_URL_TEMPLATE.format(day=first_day)
+    slots_url_main = SLOT_URL_TEMPLATE.format(day=normalized_day)
     slots_res_main = fetch_json(slots_url_main) or {}
     slots_main = slots_res_main.get("slot_list", []) or slots_res_main.get("available_slot_list", [])
 
-    slots_url_appt = APPT_SLOT_URL_TEMPLATE.format(day=first_day)
+    slots_url_appt = APPT_SLOT_URL_TEMPLATE.format(day=normalized_day)
     slots_res_appt = fetch_json(slots_url_appt) or {}
     slots_appt = slots_res_appt.get("available_slot_list", []) or slots_res_appt.get("slot_list", [])
 
