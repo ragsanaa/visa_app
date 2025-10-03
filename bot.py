@@ -2,6 +2,7 @@ import requests
 import time
 import os
 import threading
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from dotenv import load_dotenv
 
@@ -89,33 +90,50 @@ def check_slots():
         print("No available days yet.")
         return
 
-    first_day = all_available_days[0]
-    # Normalize day parameter to avoid '+' being interpreted as space in query
-    normalized_day = first_day.replace("+00:00", "Z")
+    # Define cutoff date (inclusive)
+    cutoff_date = datetime.fromisoformat("2025-12-10").date()
 
-    # Query both slot endpoints for the chosen day
-    slots_url_main = SLOT_URL_TEMPLATE.format(day=normalized_day)
-    slots_res_main = fetch_json(slots_url_main) or {}
-    slots_main = slots_res_main.get("slot_list", []) or slots_res_main.get("available_slot_list", [])
+    def day_to_date(day_str):
+        # day strings look like 'YYYY-MM-DDT00:00:00+00:00' or '...Z'
+        return datetime.strptime(day_str[:10], "%Y-%m-%d").date()
 
-    slots_url_appt = APPT_SLOT_URL_TEMPLATE.format(day=normalized_day)
-    slots_res_appt = fetch_json(slots_url_appt) or {}
-    slots_appt = slots_res_appt.get("available_slot_list", []) or slots_res_appt.get("slot_list", [])
+    days_to_check = [d for d in all_available_days if day_to_date(d) <= cutoff_date]
 
-    total_slots = (len(slots_main) if isinstance(slots_main, list) else 0) + (
-        len(slots_appt) if isinstance(slots_appt, list) else 0
-    )
+    if not days_to_check:
+        print("No available days before or on 2025-12-10.")
+        return
 
-    if total_slots:
-        msg = (
-            f"✅ Appointment available!\n"
-            f"Day: {first_day}\n"
-            f"Slots: {total_slots} (main: {len(slots_main)}, appt: {len(slots_appt)})"
+    any_found = False
+    for day_str in days_to_check:
+        normalized_day = day_str.replace("+00:00", "Z")
+
+        # Query both slot endpoints for this day
+        slots_url_main = SLOT_URL_TEMPLATE.format(day=normalized_day)
+        slots_res_main = fetch_json(slots_url_main) or {}
+        slots_main = slots_res_main.get("slot_list", []) or slots_res_main.get("available_slot_list", [])
+
+        slots_url_appt = APPT_SLOT_URL_TEMPLATE.format(day=normalized_day)
+        slots_res_appt = fetch_json(slots_url_appt) or {}
+        slots_appt = slots_res_appt.get("available_slot_list", []) or slots_res_appt.get("slot_list", [])
+
+        total_slots = (len(slots_main) if isinstance(slots_main, list) else 0) + (
+            len(slots_appt) if isinstance(slots_appt, list) else 0
         )
-        send_message(msg)
-        print(msg)
-    else:
-        print(f"No slots on {first_day}.")
+
+        if total_slots:
+            any_found = True
+            msg = (
+                f"✅ Appointment available!\n"
+                f"Day: {day_str}\n"
+                f"Slots: {total_slots} (main: {len(slots_main)}, appt: {len(slots_appt)})"
+            )
+            send_message(msg)
+            print(msg)
+        else:
+            print(f"No slots on {day_str}.")
+
+    if not any_found:
+        print("No slots on any day up to 2025-12-10.")
 
 if __name__ == "__main__":
     # Start a tiny HTTP server on port 8000 so platform TCP/HTTP health checks pass
@@ -130,4 +148,4 @@ if __name__ == "__main__":
             check_slots()
         except Exception as e:
             print("Error:", e)
-        time.sleep(300)  # run every 5 minutes
+        time.sleep(180)  # run every 3 minutes
